@@ -13,24 +13,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/use-toast"
-import { Heart, MessageSquare, Share2, Edit, Trash2, Loader2 } from "lucide-react"
+import { MessageSquare, Share2, Edit, Trash2, Loader2 } from "lucide-react"
+import { LikeButton } from "@/components/artwork/like-button"
+import Link from "next/link"
 
 interface ArtworkActionsProps {
   artwork: any
   isOwner: boolean
+  initialLikeCount?: number
+  initialLiked?: boolean
 }
 
-export function ArtworkActions({ artwork, isOwner }: ArtworkActionsProps) {
-  const [isLiked, setIsLiked] = useState(false)
+export function ArtworkActions({ artwork, isOwner, initialLikeCount = 0, initialLiked = false }: ArtworkActionsProps) {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const router = useRouter()
   const supabase = createClientComponentClient()
-
-  const handleLike = () => {
-    setIsLiked(!isLiked)
-    // TODO: Implement like functionality with Supabase
-  }
 
   const handleShare = () => {
     if (navigator.share) {
@@ -78,15 +76,20 @@ export function ArtworkActions({ artwork, isOwner }: ArtworkActionsProps) {
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <Button variant={isLiked ? "default" : "outline"} size="sm" className="flex-1" onClick={handleLike}>
-          <Heart className={`mr-2 h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
-          Like
-        </Button>
+        <LikeButton
+          artworkId={artwork.id}
+          initialLikeCount={initialLikeCount}
+          initialLiked={initialLiked}
+          size="sm"
+          className="flex-1"
+        />
 
-        <Button variant="outline" size="sm" className="flex-1">
-          <MessageSquare className="mr-2 h-4 w-4" />
-          Comment
-        </Button>
+        <Link href={`/artwork/${artwork.id}#comments`} className="flex-1">
+          <Button variant="outline" size="sm" className="w-full">
+            <MessageSquare className="mr-2 h-4 w-4" />
+            Comment
+          </Button>
+        </Link>
 
         <Button variant="outline" size="sm" className="flex-1" onClick={handleShare}>
           <Share2 className="mr-2 h-4 w-4" />

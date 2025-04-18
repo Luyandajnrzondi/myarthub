@@ -6,7 +6,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Heart, MessageSquare, Share2 } from "lucide-react"
+import { MessageSquare, Share2 } from "lucide-react"
+import { LikeButton } from "@/components/artwork/like-button"
 
 export default async function TimelinePage() {
   const supabase = createServerComponentClient({ cookies })
@@ -25,6 +26,45 @@ export default async function TimelinePage() {
     `)
     .order("created_at", { ascending: false })
     .limit(20)
+
+  // Get current user
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  // Get like counts for all artworks
+  const likeCounts: Record<string, number> = {}
+  const userLikes: Record<string, boolean> = {}
+
+  if (artworks && artworks.length > 0) {
+    // Get all artwork IDs
+    const artworkIds = artworks.map((artwork) => artwork.id)
+
+    // Get like counts for all artworks
+    const { data: likes } = await supabase.from("likes").select("artwork_id").in("artwork_id", artworkIds)
+
+    if (likes) {
+      // Count likes for each artwork
+      likes.forEach((like) => {
+        likeCounts[like.artwork_id] = (likeCounts[like.artwork_id] || 0) + 1
+      })
+    }
+
+    // Check if current user has liked each artwork
+    if (session?.user?.id) {
+      const { data: userLikesData } = await supabase
+        .from("likes")
+        .select("artwork_id")
+        .in("artwork_id", artworkIds)
+        .eq("user_id", session.user.id)
+
+      if (userLikesData) {
+        userLikesData.forEach((like) => {
+          userLikes[like.artwork_id] = true
+        })
+      }
+    }
+  }
 
   return (
     <div className="container py-8">
@@ -102,14 +142,19 @@ export default async function TimelinePage() {
               </CardContent>
               <CardFooter className="p-4 pt-0 flex justify-between">
                 <div className="flex gap-4">
-                  <Button variant="ghost" size="sm" className="flex items-center gap-1 h-8 px-2">
-                    <Heart className="h-4 w-4" />
-                    <span>Like</span>
-                  </Button>
-                  <Button variant="ghost" size="sm" className="flex items-center gap-1 h-8 px-2">
-                    <MessageSquare className="h-4 w-4" />
-                    <span>Comment</span>
-                  </Button>
+                  <LikeButton
+                    artworkId={artwork.id}
+                    initialLikeCount={likeCounts[artwork.id] || 0}
+                    initialLiked={userLikes[artwork.id] || false}
+                    variant="ghost"
+                    size="sm"
+                  />
+                  <Link href={`/artwork/${artwork.id}#comments`}>
+                    <Button variant="ghost" size="sm" className="flex items-center gap-1 h-8 px-2">
+                      <MessageSquare className="h-4 w-4" />
+                      <span>Comment</span>
+                    </Button>
+                  </Link>
                   <Button variant="ghost" size="sm" className="flex items-center gap-1 h-8 px-2">
                     <Share2 className="h-4 w-4" />
                     <span>Share</span>

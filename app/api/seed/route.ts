@@ -17,6 +17,7 @@ export async function GET() {
         location: "Cape Town",
         website: "thandingubane.com",
         social_links: { instagram: "thandi_art", twitter: "thandi_creates" },
+        avatar_url: "https://i.pravatar.cc/300?img=1",
       },
       {
         id: "sample-artist-2",
@@ -27,6 +28,7 @@ export async function GET() {
         location: "Johannesburg",
         website: "siphomabaso.co.za",
         social_links: { instagram: "sipho_sculpts" },
+        avatar_url: "https://i.pravatar.cc/300?img=3",
       },
       {
         id: "sample-artist-3",
@@ -37,6 +39,7 @@ export async function GET() {
         location: "Durban",
         website: "leratoart.com",
         social_links: { instagram: "lerato_digital", twitter: "lerato_creates" },
+        avatar_url: "https://i.pravatar.cc/300?img=5",
       },
       {
         id: "sample-curator-1",
@@ -47,6 +50,7 @@ export async function GET() {
         location: "Pretoria",
         website: "mandlacurates.com",
         social_links: { instagram: "mandla_curates" },
+        avatar_url: "https://i.pravatar.cc/300?img=7",
       },
       {
         id: "sample-gallery-1",
@@ -57,6 +61,7 @@ export async function GET() {
         location: "Cape Town",
         website: "ubuntugallery.com",
         social_links: { instagram: "ubuntu_gallery", twitter: "ubuntu_art" },
+        avatar_url: "https://i.pravatar.cc/300?img=9",
       },
     ]
 
@@ -66,7 +71,7 @@ export async function GET() {
       if (error) console.error(`Error inserting artist ${artist.name}:`, error)
     }
 
-    // Sample artworks data
+    // Sample artworks data with real image URLs
     const artworks = [
       {
         user_id: "sample-artist-1",
@@ -78,7 +83,7 @@ export async function GET() {
         price: 12000,
         currency: "ZAR",
         status: "available",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1549887552-cb1071d3e5ca?w=800&auto=format&fit=crop",
         tags: ["abstract", "contemporary", "identity"],
       },
       {
@@ -91,7 +96,7 @@ export async function GET() {
         price: 9500,
         currency: "ZAR",
         status: "available",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1547826039-bfc35e0f1ea8?w=800&auto=format&fit=crop",
         tags: ["cityscape", "mixedmedia", "contemporary"],
       },
       {
@@ -105,7 +110,7 @@ export async function GET() {
         price: 15000,
         currency: "ZAR",
         status: "available",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1554188248-986adbb73be4?w=800&auto=format&fit=crop",
         tags: ["sculpture", "environmental", "foundmaterials"],
       },
       {
@@ -118,7 +123,7 @@ export async function GET() {
         price: 18000,
         currency: "ZAR",
         status: "sold",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1561839561-b13bcfe95249?w=800&auto=format&fit=crop",
         tags: ["sculpture", "urban", "social"],
       },
       {
@@ -131,7 +136,7 @@ export async function GET() {
         price: 5000,
         currency: "ZAR",
         status: "available",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop",
         tags: ["digital", "african", "contemporary"],
       },
       {
@@ -145,7 +150,7 @@ export async function GET() {
         price: 6500,
         currency: "ZAR",
         status: "available",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1622737133809-d95047b9e673?w=800&auto=format&fit=crop",
         tags: ["digital", "science", "afrofuturism"],
       },
       {
@@ -159,7 +164,7 @@ export async function GET() {
         price: 14000,
         currency: "ZAR",
         status: "available",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1578926288207-32356a8016e5?w=800&auto=format&fit=crop",
         tags: ["spiritual", "oilpainting", "abstract"],
       },
       {
@@ -173,19 +178,160 @@ export async function GET() {
         price: 22000,
         currency: "ZAR",
         status: "exhibition",
-        image_url: "/placeholder.svg?height=800&width=600",
+        image_url: "https://images.unsplash.com/photo-1576020799627-aeac74d58d8d?w=800&auto=format&fit=crop",
         tags: ["environmental", "sculpture", "recycled"],
       },
     ]
 
-    // Insert sample artworks
+    // Insert sample artworks and get their IDs
+    const artworkIds = []
     for (const artwork of artworks) {
-      const { error } = await supabase.from("artworks").upsert({
-        ...artwork,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      if (error) console.error(`Error inserting artwork ${artwork.title}:`, error)
+      const { data, error } = await supabase
+        .from("artworks")
+        .upsert({
+          ...artwork,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select("id")
+
+      if (error) {
+        console.error(`Error inserting artwork ${artwork.title}:`, error)
+      } else if (data && data.length > 0) {
+        artworkIds.push(data[0].id)
+      }
+    }
+
+    // Sample comments
+    const comments = [
+      {
+        user_id: "sample-artist-3",
+        content: "I love the vibrant colors and the way you've captured the essence of heritage in this piece.",
+      },
+      {
+        user_id: "sample-curator-1",
+        content:
+          "This work speaks volumes about identity and cultural memory. Would love to include it in my upcoming exhibition.",
+      },
+      {
+        user_id: "sample-gallery-1",
+        content: "Stunning composition and technique. Our collectors would be very interested in this.",
+      },
+      {
+        user_id: "sample-artist-2",
+        content: "The texture and depth in this piece is remarkable. Great work!",
+      },
+      {
+        user_id: "sample-artist-1",
+        content:
+          "I appreciate how you've incorporated traditional elements with a contemporary approach. Very inspiring.",
+      },
+    ]
+
+    // Insert sample comments for each artwork
+    for (const artworkId of artworkIds) {
+      // Add 2-3 random comments to each artwork
+      const numComments = Math.floor(Math.random() * 2) + 2
+      for (let i = 0; i < numComments; i++) {
+        const comment = comments[Math.floor(Math.random() * comments.length)]
+        const { error } = await supabase.from("comments").insert({
+          user_id: comment.user_id,
+          artwork_id: artworkId,
+          content: comment.content,
+          created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(), // Random date within the last week
+        })
+        if (error) console.error(`Error inserting comment:`, error)
+      }
+
+      // Add random likes to each artwork
+      for (const artist of artists) {
+        // 50% chance of liking
+        if (Math.random() > 0.5) {
+          const { error } = await supabase.from("likes").insert({
+            user_id: artist.id,
+            artwork_id: artworkId,
+          })
+          if (error && !error.message.includes("duplicate")) {
+            console.error(`Error inserting like:`, error)
+          }
+        }
+      }
+    }
+
+    // Create sample conversations
+    const conversations = [
+      {
+        participants: ["sample-artist-1", "sample-curator-1"],
+        messages: [
+          {
+            user_id: "sample-curator-1",
+            content:
+              "Hi Thandi, I really love your recent work 'Echoes of Ancestry'. Would you be interested in exhibiting it in our upcoming show?",
+          },
+          {
+            user_id: "sample-artist-1",
+            content: "Thank you, Mandla! I'd be very interested. When is the exhibition planned for?",
+          },
+          {
+            user_id: "sample-curator-1",
+            content:
+              "We're looking at opening in three months. It will be a group show focusing on contemporary African identity. Your work would be perfect.",
+          },
+        ],
+      },
+      {
+        participants: ["sample-artist-2", "sample-gallery-1"],
+        messages: [
+          {
+            user_id: "sample-gallery-1",
+            content:
+              "Hello Sipho, Ubuntu Gallery would like to represent your sculpture series. Are you currently working with any other galleries?",
+          },
+          {
+            user_id: "sample-artist-2",
+            content:
+              "Hi Ubuntu Gallery, thanks for reaching out! I'm not exclusively represented at the moment. I'd be interested in discussing this further.",
+          },
+          {
+            user_id: "sample-gallery-1",
+            content: "Great! Could we schedule a meeting next week to discuss terms and see more of your work?",
+          },
+        ],
+      },
+    ]
+
+    // Insert sample conversations and messages
+    for (const conversation of conversations) {
+      // Create conversation
+      const { data: convData, error: convError } = await supabase.from("conversations").insert({}).select("id")
+
+      if (convError) {
+        console.error(`Error creating conversation:`, convError)
+        continue
+      }
+
+      const conversationId = convData[0].id
+
+      // Add participants
+      for (const participantId of conversation.participants) {
+        const { error: partError } = await supabase.from("conversation_participants").insert({
+          conversation_id: conversationId,
+          user_id: participantId,
+        })
+        if (partError) console.error(`Error adding participant:`, partError)
+      }
+
+      // Add messages
+      for (const message of conversation.messages) {
+        const { error: msgError } = await supabase.from("messages").insert({
+          conversation_id: conversationId,
+          user_id: message.user_id,
+          content: message.content,
+          read: Math.random() > 0.5, // Random read status
+          created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(), // Random date within the last week
+        })
+        if (msgError) console.error(`Error adding message:`, msgError)
+      }
     }
 
     return NextResponse.json({
@@ -194,6 +340,7 @@ export async function GET() {
       data: {
         artists: artists.length,
         artworks: artworks.length,
+        conversations: conversations.length,
       },
     })
   } catch (error: any) {

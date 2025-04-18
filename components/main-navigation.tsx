@@ -10,12 +10,83 @@ import { cn } from "@/lib/utils"
 import { useSupabase } from "@/components/supabase-provider"
 import { UserAccountNav } from "@/components/user-account-nav"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { Badge } from "@/components/ui/badge"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 
 export function MainNavigation() {
   const pathname = usePathname()
   const { user } = useSupabase()
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const supabase = createClientComponentClient()
+
+  useEffect(() => {
+    if (!user) return
+
+    const fetchUnreadCount = async () => {
+      // Get all conversations where the user is a participant
+      const { data: participations } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id")
+        .eq("user_id", user.id)
+
+      if (!participations || participations.length === 0) {
+        setUnreadCount(0)
+        return
+      }
+
+      const conversationIds = participations.map((p) => p.conversation_id)
+
+      // Get unread messages count
+      const { count } = await supabase
+        .from("messages")
+        .select("id", { count: "exact" })
+        .in("conversation_id", conversationIds)
+        .eq("read", false)
+        .neq("user_id", user.id)
+
+      setUnreadCount(count || 0)
+    }
+
+    fetchUnreadCount()
+
+    // Set up real-time subscription for new messages
+    const subscription = supabase
+      .channel("messages_channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          // Only update count if message is not from current user
+          if (payload.new.user_id !== user.id) {
+            setUnreadCount((prev) => prev + 1)
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `read=eq.true`,
+        },
+        () => {
+          // Refresh count when messages are marked as read
+          fetchUnreadCount()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(subscription)
+    }
+  }, [user, supabase])
 
   const routes = [
     {
@@ -90,10 +161,17 @@ export function MainNavigation() {
           <ThemeToggle />
           {user ? (
             <>
-              <Link href="/notifications">
+              <Link href="/messages">
                 <Button variant="ghost" size="icon" className="relative">
                   <Bell className="h-5 w-5" />
-                  <span className="absolute right-1 top-1 flex h-2 w-2 rounded-full bg-primary"></span>
+                  {unreadCount > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full p-0 text-xs"
+                    >
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </Badge>
+                  )}
                 </Button>
               </Link>
               <UserAccountNav />
