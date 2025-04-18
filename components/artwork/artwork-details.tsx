@@ -6,6 +6,21 @@ interface ArtworkDetailsProps {
 }
 
 export function ArtworkDetails({ artwork }: ArtworkDetailsProps) {
+  // Function to format price with currency symbol
+  const formatPrice = (price: number, currency: string) => {
+    if (!price) return null
+
+    const currencySymbols: Record<string, string> = {
+      ZAR: "R",
+      USD: "$",
+      EUR: "€",
+      GBP: "£",
+    }
+
+    const symbol = currencySymbols[currency] || currency
+    return `${symbol}${price.toLocaleString()}`
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -42,7 +57,7 @@ export function ArtworkDetails({ artwork }: ArtworkDetailsProps) {
         {artwork.price && (
           <div>
             <h3 className="text-sm font-medium">Price</h3>
-            <p className="text-sm text-muted-foreground">${artwork.price.toLocaleString()}</p>
+            <p className="text-sm text-muted-foreground">{formatPrice(artwork.price, artwork.currency || "ZAR")}</p>
           </div>
         )}
       </div>

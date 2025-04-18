@@ -11,7 +11,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, CheckCircle2 } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 const formSchema = z.object({
   name: z.string().min(2, {
@@ -30,6 +31,7 @@ const formSchema = z.object({
 
 export function SignUpForm() {
   const [isLoading, setIsLoading] = useState(false)
+  const [isSubmitted, setIsSubmitted] = useState(false)
   const router = useRouter()
   const supabase = createClientComponentClient()
 
@@ -55,6 +57,7 @@ export function SignUpForm() {
             name: values.name,
             role: values.role,
           },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       })
 
@@ -74,12 +77,7 @@ export function SignUpForm() {
         throw profileError
       }
 
-      toast({
-        title: "Account created!",
-        description: "Please check your email to confirm your account.",
-      })
-
-      router.push("/login")
+      setIsSubmitted(true)
     } catch (error: any) {
       toast({
         title: "Error",
@@ -89,6 +87,33 @@ export function SignUpForm() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (isSubmitted) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20">
+            <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-500" />
+          </div>
+        </div>
+
+        <Alert>
+          <AlertTitle>Check your email</AlertTitle>
+          <AlertDescription>
+            We've sent a confirmation link to your email address. Please check your inbox and click the link to activate
+            your account.
+          </AlertDescription>
+        </Alert>
+
+        <div className="text-center text-sm text-muted-foreground">
+          <p>Didn't receive an email? Check your spam folder or</p>
+          <Button variant="link" className="p-0 h-auto font-normal" onClick={() => setIsSubmitted(false)}>
+            try again with a different email
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (

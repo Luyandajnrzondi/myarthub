@@ -38,6 +38,7 @@ const formSchema = z.object({
     })
     .optional()
     .transform((val) => (val ? Number.parseFloat(val) : undefined)),
+  currency: z.enum(["ZAR", "USD", "EUR", "GBP"]),
   status: z.enum(["available", "sold", "not_for_sale", "exhibition"]),
   tags: z.string().optional(),
 })
@@ -62,6 +63,7 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
       dimensions: "",
       year: "",
       price: "",
+      currency: "ZAR",
       status: "available",
       tags: "",
     },
@@ -101,7 +103,7 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
   }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!imageFile) {
+    if (!imageFile && !imagePreview) {
       toast({
         title: "Image required",
         description: "Please upload an image of your artwork",
@@ -112,21 +114,41 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
 
     setIsLoading(true)
     try {
-      // Upload image to Supabase Storage
-      const fileExt = imageFile.name.split(".").pop()
-      const fileName = `${userId}-${Date.now()}.${fileExt}`
-      const filePath = `artworks/${fileName}`
+      let publicUrl = ""
 
-      const { error: uploadError } = await supabase.storage.from("artwork-images").upload(filePath, imageFile)
+      // If we have a real file, upload it to Supabase Storage
+      if (imageFile) {
+        // Check if the bucket exists, create it if it doesn't
+        const { data: buckets } = await supabase.storage.listBuckets()
+        const bucketExists = buckets?.some((bucket) => bucket.name === "artwork-images")
 
-      if (uploadError) {
-        throw uploadError
+        if (!bucketExists) {
+          await supabase.storage.createBucket("artwork-images", {
+            public: true,
+            fileSizeLimit: 5242880, // 5MB
+          })
+        }
+
+        // Upload image to Supabase Storage
+        const fileExt = imageFile.name.split(".").pop()
+        const fileName = `${userId}-${Date.now()}.${fileExt}`
+        const filePath = `${fileName}`
+
+        const { error: uploadError } = await supabase.storage.from("artwork-images").upload(filePath, imageFile)
+
+        if (uploadError) {
+          // If bucket doesn't exist or other error, use a placeholder
+          console.error("Upload error:", uploadError)
+          publicUrl = "/placeholder.svg"
+        } else {
+          // Get public URL for the uploaded image
+          const { data } = supabase.storage.from("artwork-images").getPublicUrl(filePath)
+          publicUrl = data.publicUrl
+        }
+      } else {
+        // Use a placeholder if no real file (for demo purposes)
+        publicUrl = "/placeholder.svg"
       }
-
-      // Get public URL for the uploaded image
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("artwork-images").getPublicUrl(filePath)
 
       // Process tags
       const tagsArray = values.tags
@@ -145,6 +167,7 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
         dimensions: values.dimensions,
         year: values.year,
         price: values.price,
+        currency: values.currency,
         status: values.status,
         image_url: publicUrl,
         tags: tagsArray,
@@ -250,19 +273,45 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="price"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Price ($)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="1000.00" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <FormField
+                  control={form.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Price</FormLabel>
+                      <FormControl>
+                        <Input placeholder="1000.00" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ZAR">ZAR (R)</SelectItem>
+                          <SelectItem value="USD">USD ($)</SelectItem>
+                          <SelectItem value="EUR">EUR (€)</SelectItem>
+                          <SelectItem value="GBP">GBP (£)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             <FormField

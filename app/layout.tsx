@@ -4,6 +4,8 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { SupabaseProvider } from "@/components/supabase-provider"
 import { ThemeProvider } from "@/components/theme-provider"
+import { MainNavigation } from "@/components/main-navigation"
+import { Toaster } from "@/components/ui/toaster"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -19,10 +21,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="light">
-          <SupabaseProvider>{children}</SupabaseProvider>
+          <SupabaseProvider>
+            <div className="relative flex min-h-screen flex-col">
+              <MainNavigation />
+              <main className="flex-1">{children}</main>
+            </div>
+            <Toaster />
+          </SupabaseProvider>
         </ThemeProvider>
       </body>
     </html>
