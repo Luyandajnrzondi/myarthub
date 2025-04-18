@@ -1,166 +1,206 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import { Loader2, MoreHorizontal, Search, Eye, Trash, AlertTriangle, CheckCircle, XCircle } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog"
-import Image from "next/image"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Loader2, Search, Eye, Trash2, AlertTriangle, CheckCircle, XCircle } from "lucide-react"
 import Link from "next/link"
-import { toast } from "@/components/ui/use-toast"
+import Image from "next/image"
+
+interface OpenCall {
+  id: string
+  title: string
+  description: string
+  image_url: string
+  organization: string
+  deadline: string
+  status: string
+  created_at: string
+  created_by: string
+  profiles: {
+    name: string
+    email: string
+  }
+  submissions_count?: number
+}
 
 export function AdminOpenCallsList() {
-  const [openCalls, setOpenCalls] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [openCalls, setOpenCalls] = useState<OpenCall[]>([])
+  const [filteredOpenCalls, setFilteredOpenCalls] = useState<OpenCall[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedOpenCall, setSelectedOpenCall] = useState<any>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingOpenCall, setDeletingOpenCall] = useState(false)
-  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false)
-  const [processingApproval, setProcessingApproval] = useState(false)
-
+  const [openCallToDelete, setOpenCallToDelete] = useState<OpenCall | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<string>("all")
   const supabase = createClientComponentClient()
 
   useEffect(() => {
     fetchOpenCalls()
   }, [])
 
+  useEffect(() => {
+    let filtered = openCalls
+
+    // Apply status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((call) => call.status === statusFilter)
+    }
+
+    // Apply search filter
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(
+        (call) =>
+          call.title.toLowerCase().includes(query) ||
+          call.organization.toLowerCase().includes(query) ||
+          call.profiles?.name.toLowerCase().includes(query),
+      )
+    }
+
+    setFilteredOpenCalls(filtered)
+  }, [searchQuery, statusFilter, openCalls])
+
   const fetchOpenCalls = async () => {
-    setLoading(true)
     try {
-      const { data, error } = await supabase
+      setIsLoading(true)
+
+      // Fetch open calls with profile information
+      const { data: openCallsData, error: openCallsError } = await supabase
         .from("open_calls")
         .select(`
-          *,
-          organizations:organization_id(name, logo_url),
-          submissions:open_call_submissions(id)
+          id, title, description, image_url, organization, deadline, status, created_at, created_by,
+          profiles:created_by (name, email)
         `)
         .order("created_at", { ascending: false })
 
-      if (error) throw error
+      if (openCallsError) {
+        console.error("Error fetching open calls:", openCallsError)
+        return
+      }
 
-      setOpenCalls(data || [])
-    } catch (error) {
-      console.error("Error fetching open calls:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load open calls. Please try again.",
-        variant: "destructive",
+      // Fetch submissions count for each open call
+      const { data: submissionsData, error: submissionsError } = await supabase
+        .from("open_call_submissions")
+        .select("open_call_id")
+
+      if (submissionsError) {
+        console.error("Error fetching submissions:", submissionsError)
+      }
+
+      // Count submissions per open call
+      const submissionsCount: Record<string, number> = {}
+      submissionsData?.forEach((submission) => {
+        if (submission.open_call_id) {
+          submissionsCount[submission.open_call_id] = (submissionsCount[submission.open_call_id] || 0) + 1
+        }
       })
+
+      // Combine all data
+      const openCallsWithCounts =
+        openCallsData?.map((call) => ({
+          ...call,
+          submissions_count: submissionsCount[call.id] || 0,
+        })) || []
+
+      setOpenCalls(openCallsWithCounts)
+      setFilteredOpenCalls(openCallsWithCounts)
+    } catch (error) {
+      console.error("Error in fetchOpenCalls:", error)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value)
-  }
-
-  const filteredOpenCalls = openCalls.filter(
-    (openCall) =>
-      openCall.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      openCall.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      openCall.organizations?.name?.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
-
-  const handleViewOpenCall = (openCall: any) => {
-    setSelectedOpenCall(openCall)
-  }
-
-  const handleDeletePrompt = (openCall: any) => {
-    setSelectedOpenCall(openCall)
+  const handleDeleteClick = (openCall: OpenCall) => {
+    setOpenCallToDelete(openCall)
     setDeleteDialogOpen(true)
   }
 
-  const handleApprovalPrompt = (openCall: any) => {
-    setSelectedOpenCall(openCall)
-    setApprovalDialogOpen(true)
-  }
+  const handleDeleteConfirm = async () => {
+    if (!openCallToDelete) return
 
-  const handleDeleteOpenCall = async () => {
-    if (!selectedOpenCall) return
-
-    setDeletingOpenCall(true)
     try {
-      // Delete submissions
-      await supabase.from("open_call_submissions").delete().eq("open_call_id", selectedOpenCall.id)
+      setIsDeleting(true)
 
-      // Delete open call
-      const { error } = await supabase.from("open_calls").delete().eq("id", selectedOpenCall.id)
+      // Delete submissions associated with the open call
+      await supabase.from("open_call_submissions").delete().eq("open_call_id", openCallToDelete.id)
 
-      if (error) throw error
+      // Delete the open call
+      const { error } = await supabase.from("open_calls").delete().eq("id", openCallToDelete.id)
 
-      // Remove from local state
-      setOpenCalls(openCalls.filter((oc) => oc.id !== selectedOpenCall.id))
+      if (error) {
+        console.error("Error deleting open call:", error)
+        return
+      }
 
-      toast({
-        title: "Open call deleted",
-        description: "The open call has been successfully removed.",
+      // Remove the open call from the state
+      setOpenCalls(openCalls.filter((call) => call.id !== openCallToDelete.id))
+      setFilteredOpenCalls(filteredOpenCalls.filter((call) => call.id !== openCallToDelete.id))
+
+      // Log the admin action
+      await supabase.from("admin_logs").insert({
+        action: "delete_open_call",
+        resource_id: openCallToDelete.id,
+        details: `Deleted open call: ${openCallToDelete.title}`,
       })
-
-      setDeleteDialogOpen(false)
     } catch (error) {
-      console.error("Error deleting open call:", error)
-      toast({
-        title: "Error",
-        description: "Failed to delete open call. Please try again.",
-        variant: "destructive",
-      })
+      console.error("Error in handleDeleteConfirm:", error)
     } finally {
-      setDeletingOpenCall(false)
+      setIsDeleting(false)
+      setDeleteDialogOpen(false)
+      setOpenCallToDelete(null)
     }
   }
 
-  const handleApproveOpenCall = async (approve: boolean) => {
-    if (!selectedOpenCall) return
-
-    setProcessingApproval(true)
+  const handleStatusChange = async (openCallId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
-        .from("open_calls")
-        .update({ status: approve ? "approved" : "rejected" })
-        .eq("id", selectedOpenCall.id)
+      const { error } = await supabase.from("open_calls").update({ status: newStatus }).eq("id", openCallId)
 
-      if (error) throw error
+      if (error) {
+        console.error("Error updating open call status:", error)
+        return
+      }
 
-      // Update in local state
-      setOpenCalls(
-        openCalls.map((oc) =>
-          oc.id === selectedOpenCall.id ? { ...oc, status: approve ? "approved" : "rejected" } : oc,
-        ),
-      )
+      // Update the state
+      const updatedOpenCalls = openCalls.map((call) => (call.id === openCallId ? { ...call, status: newStatus } : call))
+      setOpenCalls(updatedOpenCalls)
 
-      toast({
-        title: approve ? "Open call approved" : "Open call rejected",
-        description: approve
-          ? "The open call has been approved and is now visible to all users."
-          : "The open call has been rejected and is no longer visible to users.",
+      // Apply filters to the updated list
+      let filtered = updatedOpenCalls
+      if (statusFilter !== "all") {
+        filtered = filtered.filter((call) => call.status === statusFilter)
+      }
+      if (searchQuery.trim() !== "") {
+        const query = searchQuery.toLowerCase()
+        filtered = filtered.filter(
+          (call) =>
+            call.title.toLowerCase().includes(query) ||
+            call.organization.toLowerCase().includes(query) ||
+            call.profiles?.name.toLowerCase().includes(query),
+        )
+      }
+      setFilteredOpenCalls(filtered)
+
+      // Log the admin action
+      await supabase.from("admin_logs").insert({
+        action: `update_open_call_status_to_${newStatus}`,
+        resource_id: openCallId,
+        details: `Updated open call status to ${newStatus}`,
       })
-
-      setApprovalDialogOpen(false)
     } catch (error) {
-      console.error("Error updating open call status:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update open call status. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setProcessingApproval(false)
+      console.error("Error in handleStatusChange:", error)
     }
   }
 
@@ -193,314 +233,153 @@ export function AdminOpenCallsList() {
           </Badge>
         )
       default:
-        return <Badge variant="outline">Unknown</Badge>
+        return <Badge variant="outline">{status}</Badge>
     }
   }
 
   return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold">Manage Open Calls</h3>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold">Manage Open Calls</h2>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <select
+              className="rounded-md border border-input bg-background px-3 py-1 text-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+            </select>
+          </div>
           <div className="relative w-64">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search open calls..." className="pl-8" value={searchQuery} onChange={handleSearch} />
+            <Input
+              placeholder="Search open calls..."
+              className="pl-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
         </div>
+      </div>
 
-        {loading ? (
-          <div className="flex justify-center items-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Organization</TableHead>
-                  <TableHead>Deadline</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Submissions</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+      {isLoading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : filteredOpenCalls.length > 0 ? (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Open Call</TableHead>
+                <TableHead>Organization</TableHead>
+                <TableHead>Created By</TableHead>
+                <TableHead>Deadline</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Submissions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredOpenCalls.map((openCall) => (
+                <TableRow key={openCall.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-10 w-10 overflow-hidden rounded">
+                        <Image
+                          src={openCall.image_url || "/placeholder.svg?height=40&width=40"}
+                          alt={openCall.title}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div className="font-medium">{openCall.title}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{openCall.organization}</TableCell>
+                  <TableCell>{openCall.profiles?.name || "Unknown"}</TableCell>
+                  <TableCell>{formatDate(openCall.deadline)}</TableCell>
+                  <TableCell>{getStatusBadge(openCall.status)}</TableCell>
+                  <TableCell>{openCall.submissions_count || 0}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      {openCall.status === "pending" && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleStatusChange(openCall.id, "approved")}
+                            title="Approve"
+                          >
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <span className="sr-only">Approve</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleStatusChange(openCall.id, "rejected")}
+                            title="Reject"
+                          >
+                            <XCircle className="h-4 w-4 text-red-600" />
+                            <span className="sr-only">Reject</span>
+                          </Button>
+                        </>
+                      )}
+                      <Link href={`/open-calls/${openCall.id}`} target="_blank">
+                        <Button variant="ghost" size="icon">
+                          <Eye className="h-4 w-4" />
+                          <span className="sr-only">View</span>
+                        </Button>
+                      </Link>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(openCall)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredOpenCalls.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      No open calls found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredOpenCalls.map((openCall) => (
-                    <TableRow key={openCall.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-md overflow-hidden relative">
-                            <Image
-                              src={openCall.image_url || "/placeholder.svg?height=40&width=40"}
-                              alt={openCall.title}
-                              fill
-                              className="object-cover"
-                            />
-                          </div>
-                          <span className="truncate max-w-[200px]">{openCall.title}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{openCall.organizations?.name || "Unknown"}</TableCell>
-                      <TableCell>{formatDate(openCall.deadline)}</TableCell>
-                      <TableCell>{getStatusBadge(openCall.status || "pending")}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{openCall.submissions?.length || 0} submissions</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewOpenCall(openCall)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/open-calls/${openCall.id}`} target="_blank">
-                                <Eye className="mr-2 h-4 w-4" />
-                                View on site
-                              </Link>
-                            </DropdownMenuItem>
-                            {openCall.status === "pending" && (
-                              <DropdownMenuItem onClick={() => handleApprovalPrompt(openCall)}>
-                                <CheckCircle className="mr-2 h-4 w-4" />
-                                Review approval
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => handleDeletePrompt(openCall)}
-                            >
-                              <Trash className="mr-2 h-4 w-4" />
-                              Delete open call
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-
-      {/* Open Call Details Dialog */}
-      {selectedOpenCall && (
-        <Dialog
-          open={!!selectedOpenCall && !deleteDialogOpen && !approvalDialogOpen}
-          onOpenChange={() => setSelectedOpenCall(null)}
-        >
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>{selectedOpenCall.title}</DialogTitle>
-              <DialogDescription>By {selectedOpenCall.organizations?.name || "Unknown organization"}</DialogDescription>
-            </DialogHeader>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="relative aspect-video rounded-md overflow-hidden">
-                <Image
-                  src={selectedOpenCall.image_url || "/placeholder.svg?height=300&width=400"}
-                  alt={selectedOpenCall.title}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Description</h4>
-                  <p>{selectedOpenCall.description || "No description provided."}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Deadline</h4>
-                  <p>{formatDate(selectedOpenCall.deadline)}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Status</h4>
-                  <p>{getStatusBadge(selectedOpenCall.status || "pending")}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Eligibility</h4>
-                  <p>{selectedOpenCall.eligibility || "Not specified"}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Prizes</h4>
-                  <p>{selectedOpenCall.prizes || "Not specified"}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Created</h4>
-                  <p>{formatDate(selectedOpenCall.created_at)}</p>
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={() => setSelectedOpenCall(null)}>
-                Close
-              </Button>
-
-              {selectedOpenCall.status === "pending" && (
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    setApprovalDialogOpen(true)
-                  }}
-                >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Review Approval
-                </Button>
-              )}
-
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setDeleteDialogOpen(true)
-                }}
-              >
-                <Trash className="mr-2 h-4 w-4" />
-                Delete Open Call
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : (
+        <div className="flex justify-center py-8 text-muted-foreground">
+          <p>No open calls found</p>
+        </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Open Call</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirm Deletion
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this open call? This action cannot be undone.
+              Are you sure you want to delete the open call "{openCallToDelete?.title}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-
-          {selectedOpenCall && (
-            <div className="flex items-center gap-4 py-2">
-              <div className="h-16 w-16 relative rounded-md overflow-hidden">
-                <Image
-                  src={selectedOpenCall.image_url || "/placeholder.svg?height=64&width=64"}
-                  alt={selectedOpenCall.title}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <div>
-                <h4 className="font-medium">{selectedOpenCall.title}</h4>
-                <p className="text-sm text-muted-foreground">By {selectedOpenCall.organizations?.name || "Unknown"}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-destructive/10 text-destructive rounded-md p-3 flex items-start gap-2">
-            <AlertTriangle className="h-5 w-5 mt-0.5" />
-            <div>
-              <p className="font-medium">Warning</p>
-              <p className="text-sm">This will permanently delete the open call and all associated submissions.</p>
-            </div>
-          </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDeleteOpenCall} disabled={deletingOpenCall}>
-              {deletingOpenCall && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete Open Call
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Open Call"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Approval Dialog */}
-      <Dialog open={approvalDialogOpen} onOpenChange={setApprovalDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Review Open Call</DialogTitle>
-            <DialogDescription>Review this open call and decide whether to approve or reject it.</DialogDescription>
-          </DialogHeader>
-
-          {selectedOpenCall && (
-            <div className="flex items-center gap-4 py-2">
-              <div className="h-16 w-16 relative rounded-md overflow-hidden">
-                <Image
-                  src={selectedOpenCall.image_url || "/placeholder.svg?height=64&width=64"}
-                  alt={selectedOpenCall.title}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <div>
-                <h4 className="font-medium">{selectedOpenCall.title}</h4>
-                <p className="text-sm text-muted-foreground">By {selectedOpenCall.organizations?.name || "Unknown"}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            <div className="bg-primary/10 rounded-md p-3">
-              <h4 className="font-medium mb-1">Approval Guidelines</h4>
-              <ul className="text-sm space-y-1 list-disc pl-4">
-                <li>Ensure the open call follows community guidelines</li>
-                <li>Verify the organization is legitimate</li>
-                <li>Check that deadlines and requirements are clear</li>
-                <li>Confirm the content is appropriate for all users</li>
-              </ul>
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 flex-col sm:flex-row">
-            <Button variant="outline" onClick={() => setApprovalDialogOpen(false)} className="sm:order-1">
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => handleApproveOpenCall(false)}
-              disabled={processingApproval}
-              className="sm:order-2"
-            >
-              {processingApproval ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <XCircle className="mr-2 h-4 w-4" />
-              )}
-              Reject Open Call
-            </Button>
-            <Button
-              variant="default"
-              onClick={() => handleApproveOpenCall(true)}
-              disabled={processingApproval}
-              className="sm:order-3"
-            >
-              {processingApproval ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <CheckCircle className="mr-2 h-4 w-4" />
-              )}
-              Approve Open Call
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Card>
+    </div>
   )
 }

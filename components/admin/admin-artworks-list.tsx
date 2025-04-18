@@ -1,125 +1,176 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
-import { Loader2, MoreHorizontal, Search, Eye, Trash, AlertTriangle } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog"
-import Image from "next/image"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Loader2, Search, Eye, Trash2, AlertTriangle } from "lucide-react"
 import Link from "next/link"
-import { toast } from "@/components/ui/use-toast"
+import Image from "next/image"
+
+interface Artwork {
+  id: string
+  title: string
+  description: string
+  image_url: string
+  user_id: string
+  price: number
+  currency: string
+  medium: string
+  created_at: string
+  profiles: {
+    name: string
+    email: string
+  }
+  likes_count?: number
+  comments_count?: number
+}
 
 export function AdminArtworksList() {
-  const [artworks, setArtworks] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [artworks, setArtworks] = useState<Artwork[]>([])
+  const [filteredArtworks, setFilteredArtworks] = useState<Artwork[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedArtwork, setSelectedArtwork] = useState<any>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [deletingArtwork, setDeletingArtwork] = useState(false)
-
+  const [artworkToDelete, setArtworkToDelete] = useState<Artwork | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const supabase = createClientComponentClient()
 
   useEffect(() => {
     fetchArtworks()
   }, [])
 
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredArtworks(artworks)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = artworks.filter(
+        (artwork) =>
+          artwork.title.toLowerCase().includes(query) ||
+          artwork.profiles.name.toLowerCase().includes(query) ||
+          artwork.medium.toLowerCase().includes(query),
+      )
+      setFilteredArtworks(filtered)
+    }
+  }, [searchQuery, artworks])
+
   const fetchArtworks = async () => {
-    setLoading(true)
     try {
-      const { data, error } = await supabase
+      setIsLoading(true)
+
+      // Fetch artworks with profile information
+      const { data: artworksData, error: artworksError } = await supabase
         .from("artworks")
         .select(`
-          *,
-          profiles:user_id(username, full_name),
-          likes:likes(id),
-          comments:comments(id)
+          id, title, description, image_url, user_id, price, currency, medium, created_at,
+          profiles:user_id (name, email)
         `)
         .order("created_at", { ascending: false })
 
-      if (error) throw error
+      if (artworksError) {
+        console.error("Error fetching artworks:", artworksError)
+        return
+      }
 
-      setArtworks(data || [])
-    } catch (error) {
-      console.error("Error fetching artworks:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load artworks. Please try again.",
-        variant: "destructive",
+      // Fetch likes count for each artwork
+      const { data: likesData, error: likesError } = await supabase.from("likes").select("artwork_id")
+
+      if (likesError) {
+        console.error("Error fetching likes:", likesError)
+      }
+
+      // Count likes per artwork
+      const likesCount: Record<string, number> = {}
+      likesData?.forEach((like) => {
+        if (like.artwork_id) {
+          likesCount[like.artwork_id] = (likesCount[like.artwork_id] || 0) + 1
+        }
       })
+
+      // Fetch comments count for each artwork
+      const { data: commentsData, error: commentsError } = await supabase.from("comments").select("artwork_id")
+
+      if (commentsError) {
+        console.error("Error fetching comments:", commentsError)
+      }
+
+      // Count comments per artwork
+      const commentsCount: Record<string, number> = {}
+      commentsData?.forEach((comment) => {
+        if (comment.artwork_id) {
+          commentsCount[comment.artwork_id] = (commentsCount[comment.artwork_id] || 0) + 1
+        }
+      })
+
+      // Combine all data
+      const artworksWithCounts =
+        artworksData?.map((artwork) => ({
+          ...artwork,
+          likes_count: likesCount[artwork.id] || 0,
+          comments_count: commentsCount[artwork.id] || 0,
+        })) || []
+
+      setArtworks(artworksWithCounts)
+      setFilteredArtworks(artworksWithCounts)
+    } catch (error) {
+      console.error("Error in fetchArtworks:", error)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value)
-  }
-
-  const filteredArtworks = artworks.filter(
-    (artwork) =>
-      artwork.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      artwork.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      artwork.profiles?.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      artwork.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
-
-  const handleViewArtwork = (artwork: any) => {
-    setSelectedArtwork(artwork)
-  }
-
-  const handleDeletePrompt = (artwork: any) => {
-    setSelectedArtwork(artwork)
+  const handleDeleteClick = (artwork: Artwork) => {
+    setArtworkToDelete(artwork)
     setDeleteDialogOpen(true)
   }
 
-  const handleDeleteArtwork = async () => {
-    if (!selectedArtwork) return
+  const handleDeleteConfirm = async () => {
+    if (!artworkToDelete) return
 
-    setDeletingArtwork(true)
     try {
-      // Delete likes
-      await supabase.from("likes").delete().eq("artwork_id", selectedArtwork.id)
+      setIsDeleting(true)
 
-      // Delete comments
-      await supabase.from("comments").delete().eq("artwork_id", selectedArtwork.id)
+      // Delete likes associated with the artwork
+      await supabase.from("likes").delete().eq("artwork_id", artworkToDelete.id)
 
-      // Delete artwork
-      const { error } = await supabase.from("artworks").delete().eq("id", selectedArtwork.id)
+      // Delete comments associated with the artwork
+      await supabase.from("comments").delete().eq("artwork_id", artworkToDelete.id)
 
-      if (error) throw error
+      // Delete the artwork
+      const { error } = await supabase.from("artworks").delete().eq("id", artworkToDelete.id)
 
-      // Remove from local state
-      setArtworks(artworks.filter((a) => a.id !== selectedArtwork.id))
+      if (error) {
+        console.error("Error deleting artwork:", error)
+        return
+      }
 
-      toast({
-        title: "Artwork deleted",
-        description: "The artwork has been successfully removed.",
+      // Remove the artwork from the state
+      setArtworks(artworks.filter((a) => a.id !== artworkToDelete.id))
+      setFilteredArtworks(filteredArtworks.filter((a) => a.id !== artworkToDelete.id))
+
+      // Log the admin action
+      await supabase.from("admin_logs").insert({
+        action: "delete_artwork",
+        resource_id: artworkToDelete.id,
+        details: `Deleted artwork: ${artworkToDelete.title}`,
       })
-
-      setDeleteDialogOpen(false)
     } catch (error) {
-      console.error("Error deleting artwork:", error)
-      toast({
-        title: "Error",
-        description: "Failed to delete artwork. Please try again.",
-        variant: "destructive",
-      })
+      console.error("Error in handleDeleteConfirm:", error)
     } finally {
-      setDeletingArtwork(false)
+      setIsDeleting(false)
+      setDeleteDialogOpen(false)
+      setArtworkToDelete(null)
     }
   }
 
@@ -131,225 +182,136 @@ export function AdminArtworksList() {
     })
   }
 
+  const formatPrice = (price: number, currency: string) => {
+    if (!price) return "Price on request"
+
+    const currencySymbols: Record<string, string> = {
+      ZAR: "R",
+      USD: "$",
+      EUR: "€",
+      GBP: "£",
+    }
+
+    const symbol = currencySymbols[currency] || currency
+    return `${symbol}${price.toLocaleString()}`
+  }
+
   return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-semibold">Manage Artworks</h3>
-          <div className="relative w-64">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search artworks..." className="pl-8" value={searchQuery} onChange={handleSearch} />
-          </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold">Manage Artworks</h2>
+        <div className="relative w-64">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search artworks..."
+            className="pl-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
+      </div>
 
-        {loading ? (
-          <div className="flex justify-center items-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Artist</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Engagement</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+      {isLoading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : filteredArtworks.length > 0 ? (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Artwork</TableHead>
+                <TableHead>Artist</TableHead>
+                <TableHead>Medium</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Date Added</TableHead>
+                <TableHead>Engagement</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredArtworks.map((artwork) => (
+                <TableRow key={artwork.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-10 w-10 overflow-hidden rounded">
+                        <Image
+                          src={artwork.image_url || "/placeholder.svg?height=40&width=40"}
+                          alt={artwork.title}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div className="font-medium">{artwork.title}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{artwork.profiles?.name || "Unknown Artist"}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{artwork.medium}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {artwork.price ? formatPrice(artwork.price, artwork.currency || "ZAR") : "Price on request"}
+                  </TableCell>
+                  <TableCell>{formatDate(artwork.created_at)}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="text-xs">{artwork.likes_count} likes</span>
+                      <span className="text-xs">{artwork.comments_count} comments</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Link href={`/artwork/${artwork.id}`} target="_blank">
+                        <Button variant="ghost" size="icon">
+                          <Eye className="h-4 w-4" />
+                          <span className="sr-only">View</span>
+                        </Button>
+                      </Link>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(artwork)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <span className="sr-only">Delete</span>
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredArtworks.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                      No artworks found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredArtworks.map((artwork) => (
-                    <TableRow key={artwork.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-md overflow-hidden relative">
-                            <Image
-                              src={artwork.image_url || "/placeholder.svg?height=40&width=40"}
-                              alt={artwork.title}
-                              fill
-                              className="object-cover"
-                            />
-                          </div>
-                          <span className="truncate max-w-[200px]">{artwork.title}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{artwork.profiles?.username || "Unknown"}</TableCell>
-                      <TableCell>{formatDate(artwork.created_at)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-3">
-                          <Badge variant="outline" className="flex gap-1 items-center">
-                            <span>❤️</span> {artwork.likes?.length || 0}
-                          </Badge>
-                          <Badge variant="outline" className="flex gap-1 items-center">
-                            <span>💬</span> {artwork.comments?.length || 0}
-                          </Badge>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewArtwork(artwork)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/artwork/${artwork.id}`} target="_blank">
-                                <Eye className="mr-2 h-4 w-4" />
-                                View on site
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() => handleDeletePrompt(artwork)}
-                            >
-                              <Trash className="mr-2 h-4 w-4" />
-                              Delete artwork
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-
-      {/* Artwork Details Dialog */}
-      {selectedArtwork && (
-        <Dialog open={!!selectedArtwork && !deleteDialogOpen} onOpenChange={() => setSelectedArtwork(null)}>
-          <DialogContent className="max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>{selectedArtwork.title}</DialogTitle>
-              <DialogDescription>
-                By {selectedArtwork.profiles?.full_name || selectedArtwork.profiles?.username || "Unknown artist"}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="relative aspect-square rounded-md overflow-hidden">
-                <Image
-                  src={selectedArtwork.image_url || "/placeholder.svg?height=400&width=400"}
-                  alt={selectedArtwork.title}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Description</h4>
-                  <p>{selectedArtwork.description || "No description provided."}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Medium</h4>
-                  <p>{selectedArtwork.medium || "Not specified"}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Dimensions</h4>
-                  <p>{selectedArtwork.dimensions || "Not specified"}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Year</h4>
-                  <p>{selectedArtwork.year || "Not specified"}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Price</h4>
-                  <p>{selectedArtwork.price ? `R${selectedArtwork.price}` : "Not for sale"}</p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-muted-foreground mb-1">Created</h4>
-                  <p>{formatDate(selectedArtwork.created_at)}</p>
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedArtwork(null)}>
-                Close
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setSelectedArtwork(selectedArtwork)
-                  setDeleteDialogOpen(true)
-                }}
-              >
-                <Trash className="mr-2 h-4 w-4" />
-                Delete Artwork
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : (
+        <div className="flex justify-center py-8 text-muted-foreground">
+          <p>No artworks found</p>
+        </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Artwork</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirm Deletion
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this artwork? This action cannot be undone.
+              Are you sure you want to delete the artwork "{artworkToDelete?.title}"? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-
-          {selectedArtwork && (
-            <div className="flex items-center gap-4 py-2">
-              <div className="h-16 w-16 relative rounded-md overflow-hidden">
-                <Image
-                  src={selectedArtwork.image_url || "/placeholder.svg?height=64&width=64"}
-                  alt={selectedArtwork.title}
-                  fill
-                  className="object-cover"
-                />
-              </div>
-              <div>
-                <h4 className="font-medium">{selectedArtwork.title}</h4>
-                <p className="text-sm text-muted-foreground">By {selectedArtwork.profiles?.username || "Unknown"}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-destructive/10 text-destructive rounded-md p-3 flex items-start gap-2">
-            <AlertTriangle className="h-5 w-5 mt-0.5" />
-            <div>
-              <p className="font-medium">Warning</p>
-              <p className="text-sm">This will permanently delete the artwork and all associated likes and comments.</p>
-            </div>
-          </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleDeleteArtwork} disabled={deletingArtwork}>
-              {deletingArtwork && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete Artwork
+            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Artwork"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   )
 }

@@ -44,55 +44,31 @@ export function DiscoverArtworks() {
 
   useEffect(() => {
     const fetchArtworks = async () => {
-      // Fetch trending artworks (based on view count)
-      setIsLoading((prev) => ({ ...prev, trending: true }))
-      const { data: trendingData, error: trendingError } = await supabase
-        .from("artworks")
-        .select(
-          `
-          id, title, image_url, user_id, price, currency, medium, tags,
-          profiles:user_id (name),
-          view_count
-        `,
-        )
-        .order("view_count", { ascending: false })
-        .limit(20)
+      try {
+        // Fetch trending artworks (based on view count)
+        setIsLoading((prev) => ({ ...prev, trending: true }))
+        const { data: trendingData, error: trendingError } = await supabase
+          .from("artworks")
+          .select(
+            `
+            id, title, image_url, user_id, price, currency, medium, tags,
+            profiles:user_id (name),
+            view_count
+          `,
+          )
+          .order("view_count", { ascending: false })
+          .limit(20)
 
-      if (!trendingError && trendingData) {
-        setArtworks((prev) => ({ ...prev, trending: trendingData }))
-      }
-      setIsLoading((prev) => ({ ...prev, trending: false }))
+        if (!trendingError && trendingData) {
+          setArtworks((prev) => ({ ...prev, trending: trendingData }))
+        } else if (trendingError) {
+          console.error("Error fetching trending artworks:", trendingError)
+        }
+        setIsLoading((prev) => ({ ...prev, trending: false }))
 
-      // Fetch recent artworks
-      setIsLoading((prev) => ({ ...prev, recent: true }))
-      const { data: recentData, error: recentError } = await supabase
-        .from("artworks")
-        .select(
-          `
-          id, title, image_url, user_id, price, currency, medium, tags,
-          profiles:user_id (name)
-        `,
-        )
-        .order("created_at", { ascending: false })
-        .limit(20)
-
-      if (!recentError && recentData) {
-        setArtworks((prev) => ({ ...prev, recent: recentData }))
-      }
-      setIsLoading((prev) => ({ ...prev, recent: false }))
-
-      // Fetch popular artworks (based on likes)
-      setIsLoading((prev) => ({ ...prev, popular: true }))
-      const { data: likesData, error: likesError } = await supabase
-        .from("likes")
-        .select("artwork_id, count", { count: "exact" })
-        .group("artwork_id")
-        .order("count", { ascending: false })
-        .limit(20)
-
-      if (!likesError && likesData && likesData.length > 0) {
-        const artworkIds = likesData.map((item: any) => item.artwork_id)
-        const { data: popularData, error: popularError } = await supabase
+        // Fetch recent artworks
+        setIsLoading((prev) => ({ ...prev, recent: true }))
+        const { data: recentData, error: recentError } = await supabase
           .from("artworks")
           .select(
             `
@@ -100,45 +76,120 @@ export function DiscoverArtworks() {
             profiles:user_id (name)
           `,
           )
-          .in("id", artworkIds)
+          .order("created_at", { ascending: false })
+          .limit(20)
 
-        if (!popularError && popularData) {
-          // Sort by the order of likes
-          const sortedPopularData = popularData.sort((a, b) => {
-            const aLikes = likesData.find((item: any) => item.artwork_id === a.id)?.count || 0
-            const bLikes = likesData.find((item: any) => item.artwork_id === b.id)?.count || 0
-            return bLikes - aLikes
-          })
-
-          // Add likes count to each artwork
-          const popularWithLikes = sortedPopularData.map((artwork) => {
-            const likes = likesData.find((item: any) => item.artwork_id === artwork.id)?.count || 0
-            return { ...artwork, likes_count: likes }
-          })
-
-          setArtworks((prev) => ({ ...prev, popular: popularWithLikes }))
+        if (!recentError && recentData) {
+          setArtworks((prev) => ({ ...prev, recent: recentData }))
+        } else if (recentError) {
+          console.error("Error fetching recent artworks:", recentError)
         }
-      }
-      setIsLoading((prev) => ({ ...prev, popular: false }))
+        setIsLoading((prev) => ({ ...prev, recent: false }))
 
-      // Fetch curated artworks (random selection for now, could be admin-selected in the future)
-      setIsLoading((prev) => ({ ...prev, curated: true }))
-      const { data: curatedData, error: curatedError } = await supabase
-        .from("artworks")
-        .select(
-          `
-          id, title, image_url, user_id, price, currency, medium, tags,
-          profiles:user_id (name)
-        `,
-        )
-        .limit(20)
+        // Fetch popular artworks (based on likes) - FIXED QUERY
+        setIsLoading((prev) => ({ ...prev, popular: true }))
 
-      if (!curatedError && curatedData) {
-        // Shuffle the array to simulate curation
-        const shuffled = [...curatedData].sort(() => 0.5 - Math.random())
-        setArtworks((prev) => ({ ...prev, curated: shuffled }))
+        // First, get all likes
+        const { data: likesData, error: likesError } = await supabase.from("likes").select("artwork_id")
+
+        if (likesError) {
+          console.error("Error fetching likes:", likesError)
+          setIsLoading((prev) => ({ ...prev, popular: false }))
+          return
+        }
+
+        // Count likes per artwork
+        const likesCount: Record<string, number> = {}
+        likesData?.forEach((like) => {
+          if (like.artwork_id) {
+            likesCount[like.artwork_id] = (likesCount[like.artwork_id] || 0) + 1
+          }
+        })
+
+        // Sort artwork IDs by like count
+        const sortedArtworkIds = Object.entries(likesCount)
+          .sort(([, countA], [, countB]) => countB - countA)
+          .slice(0, 20)
+          .map(([id]) => id)
+
+        if (sortedArtworkIds.length > 0) {
+          // Fetch artwork details for the most liked artworks
+          const { data: popularData, error: popularError } = await supabase
+            .from("artworks")
+            .select(
+              `
+              id, title, image_url, user_id, price, currency, medium, tags,
+              profiles:user_id (name)
+            `,
+            )
+            .in("id", sortedArtworkIds)
+
+          if (!popularError && popularData) {
+            // Sort by the order of likes
+            const sortedPopularData = [...popularData].sort((a, b) => {
+              const aLikes = likesCount[a.id] || 0
+              const bLikes = likesCount[b.id] || 0
+              return bLikes - aLikes
+            })
+
+            // Add likes count to each artwork
+            const popularWithLikes = sortedPopularData.map((artwork) => {
+              return { ...artwork, likes_count: likesCount[artwork.id] || 0 }
+            })
+
+            setArtworks((prev) => ({ ...prev, popular: popularWithLikes }))
+          } else if (popularError) {
+            console.error("Error fetching popular artworks:", popularError)
+          }
+        } else {
+          // If no likes found, just show some random artworks
+          const { data: fallbackData } = await supabase
+            .from("artworks")
+            .select(
+              `
+              id, title, image_url, user_id, price, currency, medium, tags,
+              profiles:user_id (name)
+            `,
+            )
+            .limit(20)
+
+          if (fallbackData) {
+            setArtworks((prev) => ({ ...prev, popular: fallbackData.map((art) => ({ ...art, likes_count: 0 })) }))
+          }
+        }
+
+        setIsLoading((prev) => ({ ...prev, popular: false }))
+
+        // Fetch curated artworks (random selection for now, could be admin-selected in the future)
+        setIsLoading((prev) => ({ ...prev, curated: true }))
+        const { data: curatedData, error: curatedError } = await supabase
+          .from("artworks")
+          .select(
+            `
+            id, title, image_url, user_id, price, currency, medium, tags,
+            profiles:user_id (name)
+          `,
+          )
+          .limit(20)
+
+        if (!curatedError && curatedData) {
+          // Shuffle the array to simulate curation
+          const shuffled = [...curatedData].sort(() => 0.5 - Math.random())
+          setArtworks((prev) => ({ ...prev, curated: shuffled }))
+        } else if (curatedError) {
+          console.error("Error fetching curated artworks:", curatedError)
+        }
+        setIsLoading((prev) => ({ ...prev, curated: false }))
+      } catch (error) {
+        console.error("Error in fetchArtworks:", error)
+        // Reset loading states in case of error
+        setIsLoading({
+          trending: false,
+          recent: false,
+          popular: false,
+          curated: false,
+        })
       }
-      setIsLoading((prev) => ({ ...prev, curated: false }))
     }
 
     fetchArtworks()
@@ -223,7 +274,7 @@ export function DiscoverArtworks() {
                         <Card className="overflow-hidden transition-all hover:shadow-md">
                           <div className="relative aspect-square">
                             <Image
-                              src={artwork.image_url || "/placeholder.svg"}
+                              src={artwork.image_url || "/placeholder.svg?height=400&width=400"}
                               alt={artwork.title}
                               fill
                               className="object-cover"
@@ -231,9 +282,13 @@ export function DiscoverArtworks() {
                           </div>
                           <CardContent className="p-4">
                             <h3 className="font-medium line-clamp-1">{artwork.title}</h3>
-                            <p className="text-sm text-muted-foreground">{artwork.profiles.name}</p>
+                            <p className="text-sm text-muted-foreground">{artwork.profiles?.name || "Artist"}</p>
                             <div className="flex justify-between items-center mt-2">
-                              <p className="text-sm font-medium">{formatPrice(artwork.price, artwork.currency)}</p>
+                              <p className="text-sm font-medium">
+                                {artwork.price
+                                  ? formatPrice(artwork.price, artwork.currency || "ZAR")
+                                  : "Price on request"}
+                              </p>
                               {artwork.medium && (
                                 <Badge variant="outline" className="text-xs">
                                   {artwork.medium}
