@@ -1,31 +1,12 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { FeaturedArtists } from "@/components/home/featured-artists"
+import { DiscoverArtworks } from "@/components/home/discover-artworks"
+import { CurrentOpenCalls } from "@/components/home/current-open-calls"
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 
 export default async function Home() {
   const supabase = createServerComponentClient({ cookies })
-
-  // Get trending tags
-  const { data: tags } = await supabase.from("artworks").select("tags").not("tags", "is", null).limit(50)
-
-  // Extract and count unique tags
-  const tagCounts: Record<string, number> = {}
-  tags?.forEach((artwork) => {
-    if (artwork.tags) {
-      artwork.tags.forEach((tag: string) => {
-        tagCounts[tag] = (tagCounts[tag] || 0) + 1
-      })
-    }
-  })
-
-  // Sort tags by count and take top 10
-  const trendingTags = Object.entries(tagCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([tag]) => tag)
 
   return (
     <>
@@ -59,55 +40,9 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Trending Tags Section */}
-      <section className="container py-12 md:py-16">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold tracking-tight">Trending Tags</h2>
-          <Link href="/tags" className="text-sm font-medium text-muted-foreground hover:text-primary">
-            View all tags →
-          </Link>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {trendingTags.length > 0
-            ? trendingTags.map((tag) => (
-                <Link key={tag} href={`/explore?tag=${tag}`}>
-                  <Badge variant="secondary" className="px-3 py-1 text-sm">
-                    #{tag}
-                  </Badge>
-                </Link>
-              ))
-            : Array.from({ length: 10 }).map((_, i) => (
-                <Badge key={i} variant="secondary" className="px-3 py-1 text-sm">
-                  #
-                  {
-                    [
-                      "oilpainting",
-                      "abstract",
-                      "portrait",
-                      "landscape",
-                      "contemporary",
-                      "sculpture",
-                      "photography",
-                      "digital",
-                      "mixedmedia",
-                      "watercolor",
-                    ][i]
-                  }
-                </Badge>
-              ))}
-        </div>
-      </section>
+      <DiscoverArtworks />
 
-      {/* Featured Artists Section */}
-      <section className="container py-12 md:py-16">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold tracking-tight">Featured Artists</h2>
-          <Link href="/artists" className="text-sm font-medium text-muted-foreground hover:text-primary">
-            View all artists →
-          </Link>
-        </div>
-        <FeaturedArtists />
-      </section>
+      <CurrentOpenCalls />
     </>
   )
 }
