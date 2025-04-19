@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { commentOperations } from "@/lib/supabase-utils"
 
 interface CommentsProps {
   artworkId: string
@@ -142,15 +143,17 @@ export function CommentsSection({ artworkId }: CommentsProps) {
     setIsSubmitting(true)
 
     try {
-      const { error } = await supabase.from("comments").insert({
+      const commentData = {
         artwork_id: artworkId,
         user_id: user.id,
         content: newComment.trim(),
-      })
+      }
 
-      if (error) throw error
-
-      setNewComment("")
+      const result = await commentOperations.add(commentData)
+      if (result) {
+        setNewComment("")
+        // The real-time subscription will update the comments list
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -164,14 +167,8 @@ export function CommentsSection({ artworkId }: CommentsProps) {
 
   const handleDelete = async (commentId: string) => {
     try {
-      const { error } = await supabase.from("comments").delete().eq("id", commentId)
-
-      if (error) throw error
-
-      toast({
-        title: "Comment deleted",
-        description: "Your comment has been deleted",
-      })
+      await commentOperations.delete(commentId)
+      // The real-time subscription will update the comments list
     } catch (error: any) {
       toast({
         title: "Error",

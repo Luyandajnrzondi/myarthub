@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
 import { Loader2, Upload, X } from "lucide-react"
+import { artworkOperations } from "@/lib/supabase-utils"
 
 const formSchema = z.object({
   title: z.string().min(2, {
@@ -158,8 +159,8 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
             .filter(Boolean)
         : []
 
-      // Insert artwork data into Supabase
-      const { error: insertError } = await supabase.from("artworks").insert({
+      // Create artwork using our utility function
+      const artworkData = {
         user_id: userId,
         title: values.title,
         description: values.description,
@@ -171,19 +172,14 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
         status: values.status,
         image_url: publicUrl,
         tags: tagsArray,
-      })
-
-      if (insertError) {
-        throw insertError
       }
 
-      toast({
-        title: "Artwork uploaded",
-        description: "Your artwork has been successfully uploaded.",
-      })
+      const result = await artworkOperations.create(artworkData)
 
-      router.push(`/profile/${userId}`)
-      router.refresh()
+      if (result) {
+        router.push(`/profile/${userId}`)
+        router.refresh()
+      }
     } catch (error: any) {
       toast({
         title: "Error",

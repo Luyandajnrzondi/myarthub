@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
@@ -18,8 +17,8 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { toast } from "@/components/ui/use-toast"
 import { Loader2 } from "lucide-react"
+import { profileOperations } from "@/lib/supabase-utils"
 
 const formSchema = z.object({
   name: z.string().min(2, {
@@ -47,7 +46,6 @@ interface EditProfileDialogProps {
 export function EditProfileDialog({ profile, isOpen, onClose }: EditProfileDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const supabase = createClientComponentClient()
 
   // Parse social links from JSON
   const socialLinks = profile.social_links || {}
@@ -73,36 +71,24 @@ export function EditProfileDialog({ profile, isOpen, onClose }: EditProfileDialo
         twitter: values.twitter || null,
       }
 
-      // Update profile in Supabase
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          name: values.name,
-          bio: values.bio,
-          location: values.location,
-          website: values.website,
-          social_links,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", profile.id)
-
-      if (error) {
-        throw error
+      // Update profile using our utility function
+      const profileData = {
+        name: values.name,
+        bio: values.bio,
+        location: values.location,
+        website: values.website,
+        social_links,
+        updated_at: new Date().toISOString(),
       }
 
-      toast({
-        title: "Profile updated",
-        description: "Your profile has been successfully updated.",
-      })
+      const result = await profileOperations.update(profile.id, profileData)
 
-      router.refresh()
-      onClose()
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Something went wrong. Please try again.",
-        variant: "destructive",
-      })
+      if (result) {
+        router.refresh()
+        onClose()
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error)
     } finally {
       setIsLoading(false)
     }

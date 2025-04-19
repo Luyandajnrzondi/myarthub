@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Button } from "@/components/ui/button"
 import { Heart } from "lucide-react"
 import { useSupabase } from "@/components/supabase-provider"
 import { useRouter } from "next/navigation"
 import { toast } from "@/components/ui/use-toast"
+import { likeOperations } from "@/lib/supabase-utils"
 
 interface LikeButtonProps {
   artworkId: string
@@ -28,35 +28,17 @@ export function LikeButton({
   const [isLoading, setIsLoading] = useState(false)
   const { user } = useSupabase()
   const router = useRouter()
-  const supabase = createClientComponentClient()
 
   useEffect(() => {
     if (!user) return
 
     const checkIfLiked = async () => {
-      const { data, error } = await supabase
-        .from("likes")
-        .select("id")
-        .eq("artwork_id", artworkId)
-        .eq("user_id", user.id)
-        .single()
-
-      if (!error && data) {
-        setIsLiked(true)
-      }
-    }
-
-    const getLikeCount = async () => {
-      const { count, error } = await supabase.from("likes").select("id", { count: "exact" }).eq("artwork_id", artworkId)
-
-      if (!error) {
-        setLikeCount(count || 0)
-      }
+      const hasLiked = await likeOperations.hasLiked(user.id, artworkId)
+      setIsLiked(hasLiked)
     }
 
     checkIfLiked()
-    getLikeCount()
-  }, [artworkId, user, supabase])
+  }, [artworkId, user])
 
   const handleLike = async () => {
     if (!user) {
@@ -73,24 +55,22 @@ export function LikeButton({
     try {
       if (isLiked) {
         // Unlike
-        const { error } = await supabase.from("likes").delete().eq("artwork_id", artworkId).eq("user_id", user.id)
-
-        if (error) throw error
-
-        setIsLiked(false)
-        setLikeCount((prev) => Math.max(0, prev - 1))
+        const success = await likeOperations.remove(user.id, artworkId)
+        if (success) {
+          setIsLiked(false)
+          setLikeCount((prev) => Math.max(0, prev - 1))
+        }
       } else {
         // Like
-        const { error } = await supabase.from("likes").insert({
-          artwork_id: artworkId,
-          user_id: user.id,
-        })
-
-        if (error) throw error
-
-        setIsLiked(true)
-        setLikeCount((prev) => prev + 1)
+        const success = await likeOperations.add(user.id, artworkId)
+        if (success) {
+          setIsLiked(true)
+          setLikeCount((prev) => prev + 1)
+        }
       }
+
+      // Refresh the page to update the UI
+      router.refresh()
     } catch (error: any) {
       toast({
         title: "Error",
