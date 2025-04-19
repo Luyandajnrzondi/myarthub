@@ -1,103 +1,86 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import type { RealtimeChannel } from "@supabase/supabase-js"
 
-type SupabaseEvent = "INSERT" | "UPDATE" | "DELETE" | "*"
-
-interface UseRealtimeDataOptions<T> {
+interface UseRealtimeDataProps<T> {
   table: string
-  schema?: string
-  event?: SupabaseEvent
-  filter?: string
-  initialData?: T[]
+  event?: "INSERT" | "UPDATE" | "DELETE" | "*"
+  initialData: T[]
   onInsert?: (item: T) => void
   onUpdate?: (item: T) => void
   onDelete?: (item: T) => void
+  filter?: string
+  filterValue?: any
 }
 
 export function useRealtimeData<T>({
   table,
-  schema = "public",
   event = "*",
-  filter,
-  initialData = [],
+  initialData = [] as T[],
   onInsert,
   onUpdate,
   onDelete,
-}: UseRealtimeDataOptions<T>) {
+  filter,
+  filterValue,
+}: UseRealtimeDataProps<T>) {
   const [data, setData] = useState<T[]>(initialData)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const [channel, setChannel] = useState<RealtimeChannel | null>(null)
   const supabase = createClientComponentClient()
 
   useEffect(() => {
-    let channel: RealtimeChannel
+    // Create a channel for the specified table
+    const newChannel = supabase
+      .channel(`${table}-changes`)
+      .on(
+        "postgres_changes",
+        {
+          event,
+          schema: "public",
+          table,
+          filter: filter ? `${filter}=eq.${filterValue}` : undefined,
+        },
+        (payload) => {
+          const newRecord = payload.new as T
+          const oldRecord = payload.old as T
 
-    const setupSubscription = async () => {
-      try {
-        // Create a channel for real-time updates
-        const channelName = `${table}-changes`
-        channel = supabase.channel(channelName)
+          if (payload.eventType === "INSERT") {
+            setData((currentData) => [newRecord, ...currentData])
+            onInsert?.(newRecord)
+          } else if (payload.eventType === "UPDATE") {
+            setData((currentData) =>
+              currentData.map((item) => {
+                // @ts-ignore - we don't know the shape of T
+                if (item.id === newRecord.id) {
+                  return newRecord
+                }
+                return item
+              }),
+            )
+            onUpdate?.(newRecord)
+          } else if (payload.eventType === "DELETE") {
+            setData((currentData) =>
+              currentData.filter((item) => {
+                // @ts-ignore - we don't know the shape of T
+                return item.id !== oldRecord.id
+              }),
+            )
+            onDelete?.(oldRecord)
+          }
+        },
+      )
+      .subscribe()
 
-        // Set up the subscription
-        channel
-          .on(
-            "postgres_changes",
-            {
-              event,
-              schema,
-              table,
-              filter,
-            },
-            (payload) => {
-              const newItem = payload.new as T
-              const oldItem = payload.old as T
+    setChannel(newChannel)
 
-              if (payload.eventType === "INSERT") {
-                setData((current) => [...current, newItem])
-                onInsert?.(newItem)
-              } else if (payload.eventType === "UPDATE") {
-                setData((current) =>
-                  current.map((item) => {
-                    // @ts-ignore - we're assuming items have an id
-                    if (item.id === newItem.id) {
-                      return newItem
-                    }
-                    return item
-                  }),
-                )
-                onUpdate?.(newItem)
-              } else if (payload.eventType === "DELETE") {
-                setData((current) =>
-                  current.filter((item) => {
-                    // @ts-ignore - we're assuming items have an id
-                    return item.id !== oldItem.id
-                  }),
-                )
-                onDelete?.(oldItem)
-              }
-            },
-          )
-          .subscribe()
-
-        setLoading(false)
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error(String(err)))
-        setLoading(false)
-      }
-    }
-
-    setupSubscription()
-
+    // Cleanup function
     return () => {
-      // Clean up the subscription when the component unmounts
       if (channel) {
         supabase.removeChannel(channel)
       }
     }
-  }, [table, schema, event, filter, supabase, onInsert, onUpdate, onDelete])
+  }, [table, event, filter, filterValue])
 
-  return { data, setData, loading, error }
+  return { data, channel }
 }

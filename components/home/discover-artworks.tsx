@@ -78,11 +78,11 @@ export function DiscoverArtworks() {
   const fetchArtworks = async () => {
     setIsLoading(true)
     try {
-      // Fetch trending artworks (most viewed)
+      // Fetch trending artworks (using created_at as a fallback since view_count doesn't exist)
       const { data: trendingData, error: trendingError } = await supabase
         .from("artworks")
         .select("*")
-        .order("view_count", { ascending: false })
+        .order("created_at", { ascending: false }) // Using created_at instead of view_count
         .limit(20)
 
       if (trendingError) {
@@ -150,9 +150,9 @@ export function DiscoverArtworks() {
         setCuratedArtworks(
           curatedData
             ?.sort((a, b) => {
-              // Sort by a combination of factors
-              const aScore = (a.view_count || 0) + (a.price || 0) / 100
-              const bScore = (b.view_count || 0) + (b.price || 0) / 100
+              // Sort by a combination of factors without using view_count
+              const aScore = (a.price || 0) / 100
+              const bScore = (b.price || 0) / 100
               return bScore - aScore
             })
             .map(addArtistName) || [],
