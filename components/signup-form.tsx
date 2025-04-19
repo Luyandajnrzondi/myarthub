@@ -9,29 +9,29 @@ import * as z from "zod"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
-import { Loader2, CheckCircle2 } from "lucide-react"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Loader2 } from "lucide-react"
 
-const formSchema = z.object({
-  name: z.string().min(2, {
-    message: "Name must be at least 2 characters.",
-  }),
-  email: z.string().email({
-    message: "Please enter a valid email address.",
-  }),
-  password: z.string().min(8, {
-    message: "Password must be at least 8 characters.",
-  }),
-  role: z.enum(["artist", "curator", "gallery"], {
-    required_error: "Please select a role.",
-  }),
-})
+const formSchema = z
+  .object({
+    name: z.string().min(2, {
+      message: "Name must be at least 2 characters.",
+    }),
+    email: z.string().email({
+      message: "Please enter a valid email address.",
+    }),
+    password: z.string().min(8, {
+      message: "Password must be at least 8 characters.",
+    }),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match.",
+    path: ["confirmPassword"],
+  })
 
 export function SignUpForm() {
   const [isLoading, setIsLoading] = useState(false)
-  const [isSubmitted, setIsSubmitted] = useState(false)
   const router = useRouter()
   const supabase = createClientComponentClient()
 
@@ -41,23 +41,21 @@ export function SignUpForm() {
       name: "",
       email: "",
       password: "",
-      role: undefined,
+      confirmPassword: "",
     },
   })
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      // Sign up the user with Supabase Auth
+      // Sign up with email and password
       const { data, error } = await supabase.auth.signUp({
         email: values.email,
         password: values.password,
         options: {
           data: {
             name: values.name,
-            role: values.role,
           },
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
         },
       })
 
@@ -65,19 +63,28 @@ export function SignUpForm() {
         throw error
       }
 
-      // Create a profile in the profiles table
-      const { error: profileError } = await supabase.from("profiles").insert({
-        id: data.user?.id,
-        name: values.name,
-        email: values.email,
-        role: values.role,
-      })
+      if (data?.user) {
+        // Create a profile for the user
+        const { error: profileError } = await supabase.from("profiles").insert({
+          id: data.user.id,
+          name: values.name,
+          email: values.email,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
 
-      if (profileError) {
-        throw profileError
+        if (profileError) {
+          console.error("Error creating profile:", profileError)
+          // Continue anyway, as auth was successful
+        }
+
+        toast({
+          title: "Account created!",
+          description: "Please check your email to confirm your account.",
+        })
+
+        router.push("/login")
       }
-
-      setIsSubmitted(true)
     } catch (error: any) {
       toast({
         title: "Error",
@@ -89,33 +96,6 @@ export function SignUpForm() {
     }
   }
 
-  if (isSubmitted) {
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20">
-            <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-500" />
-          </div>
-        </div>
-
-        <Alert>
-          <AlertTitle>Check your email</AlertTitle>
-          <AlertDescription>
-            We've sent a confirmation link to your email address. Please check your inbox and click the link to activate
-            your account.
-          </AlertDescription>
-        </Alert>
-
-        <div className="text-center text-sm text-muted-foreground">
-          <p>Didn't receive an email? Check your spam folder or</p>
-          <Button variant="link" className="p-0 h-auto font-normal" onClick={() => setIsSubmitted(false)}>
-            try again with a different email
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -124,7 +104,7 @@ export function SignUpForm() {
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Full Name</FormLabel>
+              <FormLabel>Name</FormLabel>
               <FormControl>
                 <Input placeholder="Enter your name" {...field} />
               </FormControl>
@@ -160,22 +140,13 @@ export function SignUpForm() {
         />
         <FormField
           control={form.control}
-          name="role"
+          name="confirmPassword"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>I am a...</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your role" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="artist">Artist</SelectItem>
-                  <SelectItem value="curator">Curator</SelectItem>
-                  <SelectItem value="gallery">Gallery</SelectItem>
-                </SelectContent>
-              </Select>
+              <FormLabel>Confirm Password</FormLabel>
+              <FormControl>
+                <Input type="password" placeholder="Confirm your password" {...field} />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}

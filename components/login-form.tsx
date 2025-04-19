@@ -38,13 +38,42 @@ export function LoginForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Sign in with email and password
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: values.email,
         password: values.password,
       })
 
       if (error) {
         throw error
+      }
+
+      // Check if user profile exists, if not create it
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", data.user.id)
+        .single()
+
+      if (profileError && profileError.code !== "PGRST116") {
+        // PGRST116 means no rows returned, which is expected if profile doesn't exist
+        console.error("Error checking profile:", profileError)
+      }
+
+      // If profile doesn't exist, create it
+      if (!profileData) {
+        const { error: insertError } = await supabase.from("profiles").insert({
+          id: data.user.id,
+          email: values.email,
+          name: values.email.split("@")[0], // Default name from email
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+
+        if (insertError) {
+          console.error("Error creating profile:", insertError)
+          // Continue anyway, as auth was successful
+        }
       }
 
       toast({
