@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -38,7 +37,6 @@ export function LoginForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true)
     try {
-      // Sign in with email and password
       const { data, error } = await supabase.auth.signInWithPassword({
         email: values.email,
         password: values.password,
@@ -48,32 +46,22 @@ export function LoginForm() {
         throw error
       }
 
-      // Check if user profile exists, if not create it
-      const { data: profileData, error: profileError } = await supabase
+      // Check if profile exists
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", data.user.id)
         .single()
 
-      if (profileError && profileError.code !== "PGRST116") {
-        // PGRST116 means no rows returned, which is expected if profile doesn't exist
-        console.error("Error checking profile:", profileError)
-      }
-
-      // If profile doesn't exist, create it
-      if (!profileData) {
-        const { error: insertError } = await supabase.from("profiles").insert({
+      // If profile doesn't exist, create one
+      if (profileError && profileError.code === "PGRST116") {
+        await supabase.from("profiles").insert({
           id: data.user.id,
           email: values.email,
-          name: values.email.split("@")[0], // Default name from email
+          name: values.email.split("@")[0],
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-
-        if (insertError) {
-          console.error("Error creating profile:", insertError)
-          // Continue anyway, as auth was successful
-        }
       }
 
       toast({
@@ -84,6 +72,7 @@ export function LoginForm() {
       router.push("/dashboard")
       router.refresh()
     } catch (error: any) {
+      console.error("Login error:", error)
       toast({
         title: "Error",
         description: error.message || "Invalid login credentials.",
@@ -123,11 +112,6 @@ export function LoginForm() {
             </FormItem>
           )}
         />
-        <div className="text-right text-sm">
-          <Link href="/forgot-password" className="text-primary hover:underline">
-            Forgot password?
-          </Link>
-        </div>
         <Button type="submit" className="w-full" disabled={isLoading}>
           {isLoading ? (
             <>

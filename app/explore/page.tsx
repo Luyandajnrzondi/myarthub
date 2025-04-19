@@ -1,80 +1,72 @@
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
-import { ArtworkGrid } from "@/components/artwork/artwork-grid"
-import { ExploreFilters } from "@/components/explore/explore-filters"
+import Link from "next/link"
+import Image from "next/image"
+import { DashboardHeader } from "@/components/dashboard-header"
+import { Card, CardContent } from "@/components/ui/card"
 
-export default async function ExplorePage({
-  searchParams,
-}: {
-  searchParams: { [key: string]: string | string[] | undefined }
-}) {
+export default async function ExplorePage() {
   const supabase = createServerComponentClient({ cookies })
 
-  // Parse search params
-  const tag = typeof searchParams.tag === "string" ? searchParams.tag : undefined
-  const medium = typeof searchParams.medium === "string" ? searchParams.medium : undefined
-  const status = typeof searchParams.status === "string" ? searchParams.status : undefined
-  const sort = typeof searchParams.sort === "string" ? searchParams.sort : "newest"
+  // Check if user is authenticated
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  // Build query
-  let query = supabase.from("artworks").select("*")
-
-  // Apply filters
-  if (tag) {
-    query = query.contains("tags", [tag])
-  }
-
-  if (medium) {
-    query = query.eq("medium", medium)
-  }
-
-  if (status) {
-    query = query.eq("status", status)
-  }
-
-  // Apply sorting
-  if (sort === "newest") {
-    query = query.order("created_at", { ascending: false })
-  } else if (sort === "oldest") {
-    query = query.order("created_at", { ascending: true })
-  } else if (sort === "price_high") {
-    query = query.order("price", { ascending: false })
-  } else if (sort === "price_low") {
-    query = query.order("price", { ascending: true })
+  // Get user profile if logged in
+  let profile = null
+  if (session) {
+    const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).single()
+    profile = data
   }
 
   // Get artworks
-  const { data: artworks } = await query.limit(20)
-
-  // Get available mediums for filter
-  const { data: mediums } = await supabase.from("artworks").select("medium").not("medium", "is", null).limit(100)
-
-  const uniqueMediums = Array.from(new Set(mediums?.map((item) => item.medium).filter(Boolean)))
+  const { data: artworks } = await supabase
+    .from("artworks")
+    .select("*, profiles(name)")
+    .order("created_at", { ascending: false })
 
   return (
-    <div className="container py-8">
-      <div className="flex flex-col md:flex-row justify-between items-start gap-6">
-        <div className="w-full md:w-64 lg:w-72">
-          <ExploreFilters
-            mediums={uniqueMediums}
-            selectedTag={tag}
-            selectedMedium={medium}
-            selectedStatus={status}
-            selectedSort={sort}
-          />
+    <div className="flex min-h-screen flex-col">
+      <DashboardHeader user={profile} />
+      <main className="flex-1 container py-6">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">Explore Artworks</h1>
+          <p className="text-muted-foreground">Discover amazing artworks from artists around the world</p>
         </div>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold mb-6">{tag ? `Exploring #${tag}` : "Explore Artworks"}</h1>
 
-          {artworks && artworks.length > 0 ? (
-            <ArtworkGrid artworks={artworks} />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-64 border border-dashed rounded-lg">
-              <p className="text-muted-foreground">No artworks found matching your criteria</p>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {artworks?.map((artwork) => (
+            <Link key={artwork.id} href={`/artwork/${artwork.id}`}>
+              <Card className="overflow-hidden transition-all hover:shadow-md">
+                <div className="aspect-square relative">
+                  <Image
+                    src={artwork.image_url || "/placeholder.svg"}
+                    alt={artwork.title}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+                <CardContent className="p-4">
+                  <h3 className="font-medium line-clamp-1">{artwork.title}</h3>
+                  <p className="text-sm text-muted-foreground">{artwork.profiles?.name}</p>
+                  {artwork.price && (
+                    <p className="text-sm font-medium mt-1">
+                      {artwork.currency} {artwork.price}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+
+          {(!artworks || artworks.length === 0) && (
+            <div className="col-span-full text-center py-12">
+              <p className="text-muted-foreground">No artworks found</p>
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   )
 }

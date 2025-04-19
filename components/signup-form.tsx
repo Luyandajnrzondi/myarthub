@@ -20,8 +20,8 @@ const formSchema = z
     email: z.string().email({
       message: "Please enter a valid email address.",
     }),
-    password: z.string().min(8, {
-      message: "Password must be at least 8 characters.",
+    password: z.string().min(6, {
+      message: "Password must be at least 6 characters.",
     }),
     confirmPassword: z.string(),
   })
@@ -75,17 +75,17 @@ export function SignUpForm() {
 
         if (profileError) {
           console.error("Error creating profile:", profileError)
-          // Continue anyway, as auth was successful
         }
 
         toast({
           title: "Account created!",
-          description: "Please check your email to confirm your account.",
+          description: "You can now log in with your credentials.",
         })
 
         router.push("/login")
       }
     } catch (error: any) {
+      console.error("Signup error:", error)
       toast({
         title: "Error",
         description: error.message || "Something went wrong. Please try again.",

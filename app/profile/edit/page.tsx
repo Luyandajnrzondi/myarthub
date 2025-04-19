@@ -2,9 +2,9 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { DashboardHeader } from "@/components/dashboard-header"
-import { UploadArtworkForm } from "@/components/artwork/upload-artwork-form"
+import { EditProfileForm } from "@/components/profile/edit-profile-form"
 
-export default async function UploadPage() {
+export default async function EditProfilePage() {
   const supabase = createServerComponentClient({ cookies })
 
   // Check if user is authenticated
@@ -24,10 +24,10 @@ export default async function UploadPage() {
       <DashboardHeader user={profile} />
       <main className="flex-1 container py-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold">Upload Artwork</h1>
-          <p className="text-muted-foreground">Share your artwork with the ArtHub community</p>
+          <h1 className="text-3xl font-bold">Edit Profile</h1>
+          <p className="text-muted-foreground">Update your profile information</p>
         </div>
-        <UploadArtworkForm userId={session.user.id} />
+        <EditProfileForm profile={profile} />
       </main>
     </div>
   )

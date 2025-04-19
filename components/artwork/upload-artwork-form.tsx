@@ -10,13 +10,12 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { Button } from "@/components/ui/button"
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
 import { Loader2, Upload, X } from "lucide-react"
-import { artworkOperations } from "@/lib/supabase-utils"
 
 const formSchema = z.object({
   title: z.string().min(2, {
@@ -24,14 +23,6 @@ const formSchema = z.object({
   }),
   description: z.string().optional(),
   medium: z.string().optional(),
-  dimensions: z.string().optional(),
-  year: z
-    .string()
-    .refine((val) => !val || /^\d{4}$/.test(val), {
-      message: "Year must be a 4-digit number.",
-    })
-    .optional()
-    .transform((val) => (val ? Number.parseInt(val) : undefined)),
   price: z
     .string()
     .refine((val) => !val || /^\d+(\.\d{1,2})?$/.test(val), {
@@ -40,8 +31,7 @@ const formSchema = z.object({
     .optional()
     .transform((val) => (val ? Number.parseFloat(val) : undefined)),
   currency: z.enum(["ZAR", "USD", "EUR", "GBP"]),
-  status: z.enum(["available", "sold", "not_for_sale", "exhibition"]),
-  tags: z.string().optional(),
+  status: z.enum(["available", "sold", "not_for_sale"]),
 })
 
 interface UploadArtworkFormProps {
@@ -61,12 +51,9 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
       title: "",
       description: "",
       medium: "",
-      dimensions: "",
-      year: "",
       price: "",
       currency: "ZAR",
       status: "available",
-      tags: "",
     },
   })
 
@@ -138,7 +125,6 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
         const { error: uploadError } = await supabase.storage.from("artwork-images").upload(filePath, imageFile)
 
         if (uploadError) {
-          // If bucket doesn't exist or other error, use a placeholder
           console.error("Upload error:", uploadError)
           publicUrl = "/placeholder.svg"
         } else {
@@ -147,40 +133,37 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
           publicUrl = data.publicUrl
         }
       } else {
-        // Use a placeholder if no real file (for demo purposes)
+        // Use a placeholder if no real file
         publicUrl = "/placeholder.svg"
       }
 
-      // Process tags
-      const tagsArray = values.tags
-        ? values.tags
-            .split(",")
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-        : []
-
-      // Create artwork using our utility function
-      const artworkData = {
+      // Insert artwork data into Supabase
+      const { error: insertError } = await supabase.from("artworks").insert({
         user_id: userId,
         title: values.title,
         description: values.description,
         medium: values.medium,
-        dimensions: values.dimensions,
-        year: values.year,
         price: values.price,
         currency: values.currency,
         status: values.status,
         image_url: publicUrl,
-        tags: tagsArray,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+
+      if (insertError) {
+        throw insertError
       }
 
-      const result = await artworkOperations.create(artworkData)
+      toast({
+        title: "Artwork uploaded",
+        description: "Your artwork has been successfully uploaded.",
+      })
 
-      if (result) {
-        router.push(`/profile/${userId}`)
-        router.refresh()
-      }
+      router.push("/dashboard")
+      router.refresh()
     } catch (error: any) {
+      console.error("Upload error:", error)
       toast({
         title: "Error",
         description: error.message || "Something went wrong. Please try again.",
@@ -224,15 +207,29 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
               )}
             />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <FormField
+              control={form.control}
+              name="medium"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Medium</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Oil on canvas" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="medium"
+                name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Medium</FormLabel>
+                    <FormLabel>Price</FormLabel>
                     <FormControl>
-                      <Input placeholder="Oil on canvas" {...field} />
+                      <Input placeholder="1000.00" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -241,73 +238,27 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
 
               <FormField
                 control={form.control}
-                name="dimensions"
+                name="currency"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Dimensions</FormLabel>
-                    <FormControl>
-                      <Input placeholder="24 x 36 inches" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="year"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Year</FormLabel>
-                    <FormControl>
-                      <Input placeholder="2023" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <FormField
-                  control={form.control}
-                  name="price"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Price</FormLabel>
+                    <FormLabel>Currency</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <Input placeholder="1000.00" {...field} />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select currency" />
+                        </SelectTrigger>
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="currency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Currency</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select currency" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ZAR">ZAR (R)</SelectItem>
-                          <SelectItem value="USD">USD ($)</SelectItem>
-                          <SelectItem value="EUR">EUR (€)</SelectItem>
-                          <SelectItem value="GBP">GBP (£)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                      <SelectContent>
+                        <SelectItem value="ZAR">ZAR (R)</SelectItem>
+                        <SelectItem value="USD">USD ($)</SelectItem>
+                        <SelectItem value="EUR">EUR (€)</SelectItem>
+                        <SelectItem value="GBP">GBP (£)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <FormField
@@ -326,24 +277,8 @@ export function UploadArtworkForm({ userId }: UploadArtworkFormProps) {
                       <SelectItem value="available">Available</SelectItem>
                       <SelectItem value="sold">Sold</SelectItem>
                       <SelectItem value="not_for_sale">Not For Sale</SelectItem>
-                      <SelectItem value="exhibition">Exhibition Only</SelectItem>
                     </SelectContent>
                   </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tags</FormLabel>
-                  <FormControl>
-                    <Input placeholder="abstract, portrait, landscape" {...field} />
-                  </FormControl>
-                  <FormDescription>Separate tags with commas</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

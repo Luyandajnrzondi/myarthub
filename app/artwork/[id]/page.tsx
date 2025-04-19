@@ -1,92 +1,130 @@
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs"
 import { cookies } from "next/headers"
 import { notFound } from "next/navigation"
-import Link from "next/link"
 import Image from "next/image"
-import { ArtworkDetails } from "@/components/artwork/artwork-details"
-import { ArtworkActions } from "@/components/artwork/artwork-actions"
-import { ArtistCard } from "@/components/artwork/artist-card"
-import { CommentsSection } from "@/components/artwork/comments-section"
+import { DashboardHeader } from "@/components/dashboard-header"
+import { Card, CardContent } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 
 export default async function ArtworkPage({ params }: { params: { id: string } }) {
   const supabase = createServerComponentClient({ cookies })
 
-  // Get artwork data
-  const { data: artwork, error: artworkError } = await supabase
-    .from("artworks")
-    .select("*")
-    .eq("id", params.id)
-    .single()
-
-  if (artworkError || !artwork) {
-    notFound()
-  }
-
-  // Get artist profile
-  const { data: artist } = await supabase.from("profiles").select("*").eq("id", artwork.user_id).single()
-
-  // Check if this is the current user's artwork
+  // Check if user is authenticated
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  const isOwner = session?.user?.id === artwork.user_id
 
-  // Get like count
-  const { count: likeCount } = await supabase.from("likes").select("id", { count: "exact" }).eq("artwork_id", params.id)
+  // Get user profile if logged in
+  let profile = null
+  if (session) {
+    const { data } = await supabase.from("profiles").select("*").eq("id", session.user.id).single()
+    profile = data
+  }
 
-  // Check if current user has liked the artwork
-  let userLiked = false
-  if (session?.user?.id) {
-    const { data: userLike } = await supabase
-      .from("likes")
-      .select("id")
-      .eq("artwork_id", params.id)
-      .eq("user_id", session.user.id)
-      .maybeSingle()
+  // Get artwork details
+  const { data: artwork, error } = await supabase.from("artworks").select("*, profiles(*)").eq("id", params.id).single()
 
-    userLiked = !!userLike
+  if (error || !artwork) {
+    notFound()
+  }
+
+  // Format price with currency symbol
+  const formatPrice = (price: number, currency: string) => {
+    if (!price) return null
+
+    const currencySymbols: Record<string, string> = {
+      ZAR: "R",
+      USD: "$",
+      EUR: "€",
+      GBP: "£",
+    }
+
+    const symbol = currencySymbols[currency] || currency
+    return `${symbol}${price.toLocaleString()}`
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6">
-        <Button variant="ghost" asChild className="mb-4 -ml-3">
-          <Link href="/explore" className="flex items-center gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Explore
+    <div className="flex min-h-screen flex-col">
+      <DashboardHeader user={profile} />
+      <main className="flex-1 container py-6">
+        <div className="mb-6">
+          <Link href="/explore">
+            <Button variant="ghost" size="sm" className="mb-4">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Explore
+            </Button>
           </Link>
-        </Button>
+        </div>
 
-        <div className="grid gap-8 md:grid-cols-[2fr_1fr]">
-          <div className="space-y-6">
-            <div className="overflow-hidden rounded-lg border">
-              <Image
-                src={artwork.image_url || "/placeholder.svg"}
-                alt={artwork.title}
-                width={1200}
-                height={800}
-                className="w-full object-cover"
-              />
-            </div>
-
-            <ArtworkDetails artwork={artwork} />
-
-            <CommentsSection artworkId={params.id} />
-          </div>
-
-          <div className="space-y-6">
-            <ArtistCard artist={artist} />
-            <ArtworkActions
-              artwork={artwork}
-              isOwner={isOwner}
-              initialLikeCount={likeCount || 0}
-              initialLiked={userLiked}
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="relative aspect-square">
+            <Image
+              src={artwork.image_url || "/placeholder.svg"}
+              alt={artwork.title}
+              fill
+              className="object-contain rounded-md"
             />
           </div>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <h1 className="text-3xl font-bold">{artwork.title}</h1>
+                  <Link
+                    href={`/profile/${artwork.user_id}`}
+                    className="text-muted-foreground hover:text-primary hover:underline"
+                  >
+                    {artwork.profiles?.name}
+                  </Link>
+                </div>
+
+                {artwork.description && <p className="text-muted-foreground">{artwork.description}</p>}
+
+                <Separator />
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {artwork.medium && (
+                    <div>
+                      <h3 className="text-sm font-medium">Medium</h3>
+                      <p className="text-sm text-muted-foreground">{artwork.medium}</p>
+                    </div>
+                  )}
+
+                  {artwork.status && (
+                    <div>
+                      <h3 className="text-sm font-medium">Status</h3>
+                      <p className="text-sm text-muted-foreground capitalize">{artwork.status.replace("_", " ")}</p>
+                    </div>
+                  )}
+
+                  {artwork.price && (
+                    <div>
+                      <h3 className="text-sm font-medium">Price</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {formatPrice(artwork.price, artwork.currency || "ZAR")}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {session && artwork.user_id !== session.user.id && (
+                  <Button className="w-full mt-4">Contact Artist</Button>
+                )}
+
+                {session && artwork.user_id === session.user.id && (
+                  <Button variant="outline" className="w-full mt-4">
+                    Edit Artwork
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </div>
+      </main>
     </div>
   )
 }

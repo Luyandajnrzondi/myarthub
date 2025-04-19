@@ -60,7 +60,7 @@
 
 /* Improved container padding for better spacing */
 .container {
-  @apply px-6 md:px-8;
+  @apply px-4 md:px-6;
 }
 
 /* Improved mobile responsiveness */
@@ -70,8 +70,5 @@
   }
   h2 {
     @apply text-xl;
-  }
-  .container {
-    @apply px-4;
   }
 }
